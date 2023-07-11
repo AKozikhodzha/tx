@@ -1,8 +1,8 @@
-#include<stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include"tx_get.h"
-#define TX_BUF_MAX_LENGTH 256
+#include <stdio.h>
+#include <assert.h>
+#include "data_to_tx.h"
+
+#define TX_BUF_MAX_LENGHT 256
 
 static int char_to_int (char char_to_process_0, char char_to_process_1)
 {
@@ -73,7 +73,7 @@ static int char_to_int (char char_to_process_0, char char_to_process_1)
     return CTI_result;
 }
 
-static void check_CRC (TxGet* converter)
+static void check_CRC (DataToTX* converter)
 {
     int CRC_counted = 0;
     if (converter->tx_buf[1] == 'S')
@@ -95,38 +95,50 @@ static void check_CRC (TxGet* converter)
     }
 }
 
-void switch_to_wait_t(TxGet* converter){
-    converter->state=WAIT_T;
-    converter->tx_buf_pointer=0;
+static void switch_to_wait_t(DataToTX* converter)
+{
+    if (converter->new_tx_flag==0)
+    {
+        converter->tx_buf_pointer = 0;
+    }
+    if (converter->state==WAIT_LF)
+    {
+        converter->tx_buf_pointer=converter->new_tx_flag;
+    }
+    
+    
+    converter->state = WAIT_T;
 }
 
-void write_to_buf(TxGet* converter, char byte_to_process){
-    if (converter->tx_buf_pointer>=TX_BUF_MAX_LENGTH)
+static void write_to_buf (DataToTX* converter, char byte_to_process)
+{
+    if (converter->tx_buf_pointer >= TX_BUF_MAX_LENGHT)
     {
         switch_to_wait_t(converter);
         return;
     }
-    if (converter->isReady==READY)
-    {
-        converter->tx_buf[converter->tx_buf_pointer] = byte_to_process;
-        converter->tx_buf_pointer++;
-    }
+    converter->tx_buf[converter->tx_buf_pointer] = byte_to_process;
+    converter->tx_buf_pointer++;
 }
 
-void TxGet_init(TxGet* converter, void(*send_tx)(void *state, char* tx_buf, size_t tx_buf_length), void *send_tx_arg, char* tx_buf, size_t tx_buf_length){
+void DTX_init(DataToTX* converter, 
+    void(*send_tx) (void *state, char* tx_buf, size_t tx_buf_lenght), void *send_tx_arg, char* tx_buf, size_t tx_buf_lenght)
+{
     converter->send_tx = send_tx;
     converter->send_tx_arg = send_tx_arg;
-    converter->isReady = NOT_READY;
     converter->tx_buf = tx_buf;
-    converter->tx_buf_length = tx_buf_length;
+    converter->tx_buf_lenght = tx_buf_lenght;
+    converter->new_tx_flag=0;
     switch_to_wait_t(converter);
-}
+}   
 
-static int waitT(TxGet* converter, char byte_to_process){
-    for (size_t i = 0; i < sizeof(converter->tx_buf); i++)
+static void wait_t(DataToTX* converter, char byte_to_process)
+{
+    for (size_t i = converter->new_tx_flag; i < sizeof(converter->tx_buf); i++)
     {
         converter->tx_buf[i] = 0x00;
     }
+    
     if (byte_to_process == 'T') 
     {
         write_to_buf(converter, byte_to_process);
@@ -134,38 +146,45 @@ static int waitT(TxGet* converter, char byte_to_process){
     }
 }
 
-static int waitXorS(TxGet* converter, char byte_to_process){
-    if (byte_to_process=='X'||byte_to_process=='S')
+static void wait_xs(DataToTX* converter, char byte_to_process)
+{
+    if ((byte_to_process == 'X') || (byte_to_process == 'S'))
     {
         write_to_buf(converter, byte_to_process);
-        converter->state=COPYPAYLOAD;
+        converter->state = COPY_PAYLOAD;
     }
     else 
     {
         switch_to_wait_t(converter);
     }
-
 }
 
-static int copyPayload(TxGet* converter, char byte_to_process){
-    if (((byte_to_process>=0x30)&&(byte_to_process>=0x39))||((byte_to_process>=0x41)&&(byte_to_process>=0x46)))//0x46->0x5A, 0x61...0x7A;
+static void copy_payload(DataToTX* converter, char byte_to_process)
+{
+    if (((byte_to_process >= 0x30) && (byte_to_process <= 0x39)) ||
+        ((byte_to_process >= 0x41) && (byte_to_process <= 0x46)))
     {
         write_to_buf(converter, byte_to_process);
-    }else if (byte_to_process==0x0D)
+    }
+
+    else if (byte_to_process == 0x0D)
     {
         write_to_buf(converter, byte_to_process);
         converter->state = WAIT_LF;
     }
+
     else
     {
         switch_to_wait_t(converter);
     }
 }
 
-static void waitLF(TxGet* converter, char byte_to_process){
+static void wait_lf(DataToTX* converter, char byte_to_process)
+{
     if (byte_to_process == 0x0A)
     {
         write_to_buf(converter, byte_to_process);
+        converter->new_tx_flag+=converter->tx_buf_pointer;
         if (converter->send_tx != NULL)
         {
             check_CRC(converter);
@@ -174,41 +193,32 @@ static void waitLF(TxGet* converter, char byte_to_process){
     switch_to_wait_t(converter);
 }
 
-static void process_byte (TxGet* converter, char byte_to_process)
+static void process_byte (DataToTX* converter, char byte_to_process)
 {
     switch (converter->state)
     {
-    case WAIT_T:
-        waitT(converter, byte_to_process);
-        break;
-    case WAIT_XS:
-        waitXorS(converter, byte_to_process);
-        break;
-    case COPYPAYLOAD:
-        copyPayload(converter, byte_to_process);
-        break;
-    case WAIT_LF:
-        waitLF(converter, byte_to_process);
-        break;
+        case WAIT_T:
+            wait_t(converter, byte_to_process);
+            break;
+        case WAIT_XS:
+            wait_xs(converter, byte_to_process);
+            break;
+        case COPY_PAYLOAD:
+            copy_payload(converter, byte_to_process);
+            break;
+        case WAIT_LF:
+            wait_lf(converter, byte_to_process);
+            break;
     }
 }
 
-void TxGet_write_data(TxGet* converter, char* buf, size_t lenght)
+void DTX_write_data(DataToTX* converter, char* buf, size_t lenght)
 {
     for (int i = 0; i < lenght; i++)
     {
         process_byte(converter, buf[i]);
     }
-};
-
-void TxGet_get_tx_paket(TxGet* converter, char* tx_buf, size_t *tx_buf_length)
-{
-    if (converter->tx_buf_length!=0)
-    {
-        /* code */
-    }
-    
-};
+}
 
 void print_tx (void *state, char* tx_buf, size_t tx_buf_lenght)
 {
@@ -218,7 +228,7 @@ void print_tx (void *state, char* tx_buf, size_t tx_buf_lenght)
     }
 }
 
-void TxGet_test(TxGet* converter, char* test, size_t test_lenght)
+void DTX_test(DataToTX* converter, char* test, size_t test_lenght)
 {
     printf("\n\n\nInput: ");
     for (int i = 0; i <= test_lenght - 1; i++)
@@ -228,3 +238,13 @@ void TxGet_test(TxGet* converter, char* test, size_t test_lenght)
     printf("\nReceived: ");
     //DTX_write_data(converter, test, sizeof(test));
 }
+
+/*int main ()
+{
+    printf("\e[1;1H\e[2J");                                                                 // print
+
+    DataToTX converter;
+    char tx_buf_temp[TX_BUF_MAX_LENGHT];
+    DTX_init(&converter, print_tx, NULL, tx_buf_temp, TX_BUF_MAX_LENGHT);
+}*/
+
