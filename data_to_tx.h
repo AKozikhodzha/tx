@@ -1,6 +1,7 @@
 #ifndef DATA_TO_TX
 #define DATA_TO_TX
 
+#include <assert.h>
 typedef enum DTX_State
 {
     WAIT_T = 0,
