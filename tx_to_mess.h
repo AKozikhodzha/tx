@@ -3,14 +3,20 @@
 
 #include <assert.h>
 
+typedef enum TxTs{
+    TX=0,
+    TS,
+} TxTs;
+
 typedef struct TxToMess
 {
     char ad;
     char id;
-    char message[25];
+    size_t mess_length;
+    char* message[256];
 } TxToMess;
 
-void TxToMess_init (TxToMess *tx_object);
-void sort_tx_struct (char *input, TxToMess *output);
-void mess_to_tx(TxToMess* reverse, char *new_tx);
+void TxToMess_init (TxToMess *tx_object, size_t length);
+void tx_to_mess (char *input, size_t length, TxToMess *output);
+void mess_to_tx(TxToMess* reverse, char *new_tx, TxTs tx_ts);
 #endif
