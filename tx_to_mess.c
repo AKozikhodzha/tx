@@ -233,5 +233,5 @@ void main()
     MessToTx_init(&message, message.buf, message.buf_length);
     MessToTx new_mes;
     mess_to_tx(&tx_object, &new_mes, TX);
-    MessToTx_init(&message, message.buf, message.buf_length);
+    MessToTx_init(&new_mes, new_mes.buf, new_mes.buf_length);
 }
