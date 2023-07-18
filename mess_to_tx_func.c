@@ -1,22 +1,12 @@
 #include <stdio.h>
 #include <string.h>
+
 #include "tx_to_mess.h"
 
-void TxToMess_init (TxToMess* txstruct, char ad, char id, char* data, size_t data_length)
+typedef struct DecodedBytes
 {
-    txstruct->ad = ad;
-    txstruct->id = id;
-    txstruct->data = data;
-    txstruct->data_length = data_length;
-}
-
-void MessToTx_init(MessToTx* msg,
-     char* buf, size_t buf_lenght)
-{
-    msg->buf = buf;
-    msg->buf_length = buf_lenght;
-}
-
+    char byte_a, byte_b;
+} DecodedBytes;
 
 int chek_bytes (char byte){
     if (((byte>=0x30) && (byte<=0x39))||((byte>=0x41)&&(byte<=0x46)))
@@ -44,80 +34,6 @@ void ascii_encode (char byte, char *bytes){
     sprintf(byte_temp, "%2X", byte);
     sprintf(bytes, byte_temp);
 }
-//преобразование тх пакета в объект
-void tx_to_mess (char *tx_packet, size_t tx_packet_length, TxToMess *tx_object)
-{
-    int err_code=0;
-    size_t new_length = tx_packet_length;
-    tx_object->data_length = new_length-8;
-    int data_lenght_temp = 0;
-    
-    char tx_ad[2];
-    tx_ad[0]=tx_packet[2];
-    tx_ad[1]=tx_packet[3];
-
-    char tx_id[2];
-    tx_id[0]=tx_packet[4];
-    tx_id[1]=tx_packet[5];
-
-
-    ascii_decode(tx_ad, &tx_object->ad, &err_code);
-    ascii_decode(tx_id, &tx_object->id, &err_code);
-    printf("ad: %2X,\n id: %2X,\n", tx_object->ad, tx_object->id);
-    printf("data: ");
-    if (tx_packet[1]=='X')
-    {
-        int j = 0;
-        char buf_temp[new_length-6];
-        char *temp=malloc(3);
-        for ( int i=6; i < new_length-2; i+=2)
-        {
-            temp[0]=tx_packet[i];
-            temp[1]=tx_packet[i+1];
-            char a;
-            ascii_decode(temp, &a, &err_code);
-            buf_temp[j] = a;
-            j++;
-        }
-        tx_object->data=buf_temp;
-        
-        printf("%s\n", tx_object->data);
-        for (size_t k = 0; k < j; k++)
-        {
-            printf("%2X ", tx_object->data[k]);
-        }
-        printf("\n");
-    }
-
-    if (tx_packet[1]=='S')
-    {
-        int j = 0;
-        char buf_temp[new_length-6];
-        char *temp=malloc(3);
-        for ( int i=6; i < new_length-4; i+=2)
-        {
-            temp[0]=tx_packet[i];
-            temp[1]=tx_packet[i+1];
-            char a;
-            ascii_decode(temp, &a, &err_code);
-            buf_temp[j] = a;
-            j++;
-        }
-        tx_object->data=buf_temp;
-        tx_object->data_length +=2;
-        printf("%s\n", tx_object->data);
-        for (size_t k = 0; k < j; k++)
-        {
-            printf("%2X ", tx_object->data[k]);
-        }
-        printf("\n");
-    }else if (tx_packet[1]=='X'&&tx_packet[1]=='S')
-    {
-        printf("Error: tx packet not found!");
-        return;
-    }
-}
-
 
 static void TTS_make_crc(MessToTx* message)
 {
@@ -144,9 +60,9 @@ static void TTS_make_crc(MessToTx* message)
 }
 
 void mess_to_tx(TxToMess* reverse, MessToTx *message, TxTs tx_ts){
+
     char dcd_bts[2];
     message->buf_length = 0;
-    message->buf=malloc(100);
     message->buf[0] = 'T';
 
     if (tx_ts==TX)
@@ -189,7 +105,42 @@ void mess_to_tx(TxToMess* reverse, MessToTx *message, TxTs tx_ts){
     message->buf[message->buf_length] = 0x0A;
     message->buf_length++;
     message->buf[message->buf_length] = 0x00;
-
+//конец кода дениса
+    /*char *new_tx;
+    new_tx[0]=0x54;
+    if (tx_ts==TX)
+    {
+        new_tx[1]=0x58;
+    }
+    if (tx_ts==TS)
+    {
+        new_tx[1]=0x53;
+    }
+    new_tx[2]=reverse->ad;
+    new_tx[3]=reverse->id;
+    size_t i = 0; 
+    for ( i; i <= sizeof(reverse->data); i++)
+    {
+        new_tx[i+4]=reverse->data[i];
+    }
+    if (tx_ts==TS)
+    {
+        TTS_make_crc(reverse);
+        new_tx[i+7]="\r";
+        new_tx[i+8]="\n";
+    }else
+    {
+        new_tx[i+5]="\r";
+        new_tx[i+6]="\n";
+    }*/
+    
+    
+    printf("\nmessage->buf: ");
+    for (size_t i = 0; i <= message->buf_length; i++)
+    {
+        printf("%c", message->buf[i]);
+    }
+    printf("\n");
 }
 
 
@@ -205,33 +156,23 @@ void main()
     ascii_encode(byte, res_bytes);
     printf("%s\n", res_bytes);
     //начнем отсюда (сверху просто тест)
-    //преобразуем тх в message
-    char *tx_packet = "TX21014135461F3A414F\r\n";
-
-    size_t tx_packet_length = strlen(tx_packet);
-    TxToMess tx_object;
-    tx_to_mess(tx_packet, tx_packet_length, &tx_object);
-    TxToMess_init (&tx_object, tx_object.ad, tx_object.id, tx_object.data, tx_object.data_length);
-    
-    //преобразуем данные в тх
+    //преобразуем message в тх
     char tx_message[] = {0x21, 0x01, 0x41, 0x35, 0x46, 0x1F, 0x3A, 0x41, 0x4F};
-    size_t tx_message_length = sizeof(tx_message)/sizeof(tx_message[0]);
+    size_t tx_packet_length = sizeof(tx_message)/sizeof(tx_message[0]);
+    printf("tx_packet: %s \n", tx_message);
     
     TxToMess reverse;
     reverse.ad=tx_message[0];
     reverse.id=tx_message[1];
-    reverse.data_length=tx_message_length-2;
+    reverse.data_length=tx_packet_length-2;
     reverse.data=malloc(reverse.data_length);
     size_t j = 0;
-    for (size_t i = 2; i < tx_message_length; i++)
+    for (size_t i = 2; i < tx_packet_length; i++)
     {
         reverse.data[j]=tx_message[i];
         j++;
     }
     MessToTx message;
     mess_to_tx(&reverse, &message, TS);
-    MessToTx_init(&message, message.buf, message.buf_length);
-    MessToTx new_mes;
-    mess_to_tx(&tx_object, &new_mes, TX);
-    MessToTx_init(&message, message.buf, message.buf_length);
+
 }
